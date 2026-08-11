@@ -63,7 +63,7 @@ folium.WmsTileLayer(
 
 folium.LayerControl(position="topright", collapsed=False).add_to(radar_map)
 
-# 6. Universal Search Engine & Dynamic Weather Stats Bar Interface
+# 6. Universal Search Engine with BETA Badge & Dynamic Weather Stats Bar Interface
 hud_html = """
 <style>
     .leaflet-tile-pane .leaflet-layer:nth-child(4) img {
@@ -73,7 +73,7 @@ hud_html = """
     }
 </style>
 
-<!-- TOP DYNAMIC SEARCH BAR -->
+<!-- TOP DYNAMIC SEARCH BAR WITH BETA BADGE -->
 <div id="top-control-panel" style="
     position: fixed;
     top: 15px;
@@ -97,9 +97,21 @@ hud_html = """
         gap: 12px;
         font-size: 0.88em;
     ">
-        <span style="color: #00e5ff; font-weight: bold; letter-spacing: 1px;">🌐 SEARCH ANY LOCATION:</span>
+        <!-- BETA STAGE BADGE -->
+        <span style="
+            background: rgba(255, 170, 0, 0.2);
+            border: 1px solid #ffaa00;
+            color: #ffaa00;
+            padding: 3px 8px;
+            border-radius: 10px;
+            font-size: 0.75em;
+            font-weight: bold;
+            letter-spacing: 1px;
+        ">BETA STAGE</span>
+
+        <span style="color: #00e5ff; font-weight: bold; letter-spacing: 1px;">🌐 SEARCH:</span>
         <div style="position: relative;">
-            <input type="text" id="us-search-input" placeholder="Type any US city, state, or zip..." oninput="handleSearchInput()" style="
+            <input type="text" id="us-search-input" placeholder="Type city, state, or zip..." oninput="handleSearchInput()" style="
                 background: #101721;
                 border: 1px solid #223344;
                 color: #00ff66;
@@ -107,7 +119,7 @@ hud_html = """
                 border-radius: 18px;
                 outline: none;
                 font-family: inherit;
-                width: 280px;
+                width: 250px;
             ">
             <div id="suggestions-box" style="
                 display: none;
@@ -215,7 +227,7 @@ hud_html = """
     updateUTC();
 
     let activeLat = 39.8283;
-    let activeLon = -82.5795;
+    let activeLon = -98.5795;
 
     function getLeafletMap() {
         for (let key in window) {
@@ -322,9 +334,9 @@ hud_html = """
 
 radar_map.get_root().html.add_child(folium.Element(hud_html))
 
-# 7. Save map and launch in Chrome
-file_path = os.path.abspath("universal_radar_workstation.html")
+# 7. Save map and launch in browser
+file_path = os.path.abspath("index.html")
 radar_map.save(file_path)
 
 webbrowser.open(f"file://{file_path}")
-print("Universal Radar Workstation launched in Google Chrome!")
+print("Saved index.html with BETA badge and launched successfully!")
