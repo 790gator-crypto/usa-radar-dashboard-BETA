@@ -1,0 +1,330 @@
+%pip install folium requests 
+import os
+import webbrowser
+import folium
+
+# 1. Initialize map centered broadly across the US (Zoom level 4)
+radar_map = folium.Map(
+    location=[39.8283, -98.5795],
+    zoom_start=4,
+    tiles="http://mt0.google.com/vt/lyrs=s&x={x}&y={y}&z={z}",
+    attr="Google Maps Satellite",
+    name="Google Satellite Base",
+)
+
+# 2. Add Google Hybrid Road & City Labels
+folium.TileLayer(
+    tiles="http://mt0.google.com/vt/lyrs=h&x={x}&y={y}&z={z}",
+    attr="Google Labels",
+    name="Google Hybrid Labels",
+    overlay=True,
+).add_to(radar_map)
+
+# 3. Add NOAA GOES Infrared Cloud Satellite Coverage Layer
+goes_ir_url = "https://mesonet.agron.iastate.edu/cgi-bin/wms/goes/east_ir.cgi"
+folium.WmsTileLayer(
+    url=goes_ir_url,
+    layers="east_ir_4km",
+    name="Real-time Infrared Clouds",
+    fmt="image/png",
+    transparent=True,
+    overlay=True,
+    control=True,
+    opacity=0.45,
+).add_to(radar_map)
+
+# 4. Add High-Res NEXRAD Doppler Radar Composite (HDR Shader)
+nws_radar_url = "https://mesonet.agron.iastate.edu/cgi-bin/wms/nexrad/n0q.cgi"
+folium.WmsTileLayer(
+    url=nws_radar_url,
+    layers="nexrad-n0q-900913",
+    name="High-Res Doppler Storm Radar",
+    fmt="image/png",
+    transparent=True,
+    overlay=True,
+    control=True,
+    opacity=0.82,
+    z_index=500,
+).add_to(radar_map)
+
+# 5. Add Live Severe Weather & Lightning Warnings Layer
+lightning_url = "https://mesonet.agron.iastate.edu/cgi-bin/wms/us/wwa.cgi"
+folium.WmsTileLayer(
+    url=lightning_url,
+    layers="warnings_c",
+    name="Severe Weather & Lightning Alerts",
+    fmt="image/png",
+    transparent=True,
+    overlay=True,
+    control=True,
+    opacity=0.9,
+    z_index=600,
+).add_to(radar_map)
+
+folium.LayerControl(position="topright", collapsed=False).add_to(radar_map)
+
+# 6. Universal Search Engine & Dynamic Weather Stats Bar Interface
+hud_html = """
+<style>
+    .leaflet-tile-pane .leaflet-layer:nth-child(4) img {
+        filter: contrast(160%) saturate(220%) drop-shadow(0 0 8px rgba(0,255,102,0.4));
+        mix-blend-mode: screen;
+        transition: opacity 0.5s ease-in-out;
+    }
+</style>
+
+<!-- TOP DYNAMIC SEARCH BAR -->
+<div id="top-control-panel" style="
+    position: fixed;
+    top: 15px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+">
+    <div style="
+        background: rgba(8, 12, 18, 0.95);
+        border: 1px solid #00e5ff;
+        box-shadow: 0 0 25px rgba(0, 229, 255, 0.4);
+        border-radius: 25px;
+        padding: 8px 22px;
+        color: #ffffff;
+        font-family: 'Segoe UI', Roboto, sans-serif;
+        display: flex;
+        align-items: center;
+        gap: 12px;
+        font-size: 0.88em;
+    ">
+        <span style="color: #00e5ff; font-weight: bold; letter-spacing: 1px;">🌐 SEARCH ANY LOCATION:</span>
+        <div style="position: relative;">
+            <input type="text" id="us-search-input" placeholder="Type any US city, state, or zip..." oninput="handleSearchInput()" style="
+                background: #101721;
+                border: 1px solid #223344;
+                color: #00ff66;
+                padding: 7px 16px;
+                border-radius: 18px;
+                outline: none;
+                font-family: inherit;
+                width: 280px;
+            ">
+            <div id="suggestions-box" style="
+                display: none;
+                position: absolute;
+                top: 40px;
+                left: 0;
+                width: 100%;
+                background: #0d131a;
+                border: 1px solid #00e5ff;
+                border-radius: 12px;
+                max-height: 200px;
+                overflow-y: auto;
+                box-shadow: 0 5px 20px rgba(0,0,0,0.8);
+                z-index: 10000;
+            "></div>
+        </div>
+        
+        <button onclick="useMyLocation()" style="
+            background: #00e5ff;
+            color: #000;
+            border: none;
+            padding: 7px 14px;
+            border-radius: 18px;
+            font-weight: bold;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        ">📍 MY LOCATION</button>
+    </div>
+</div>
+
+<!-- BOTTOM DYNAMIC WEATHER STATS BAR -->
+<div id="radar-stats-bar" style="
+    position: fixed;
+    bottom: 20px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 9999;
+    background: rgba(8, 12, 18, 0.95);
+    border: 1px solid #34A853;
+    box-shadow: 0 0 25px rgba(52, 168, 83, 0.35);
+    border-radius: 12px;
+    padding: 12px 25px;
+    color: #ffffff;
+    font-family: 'Segoe UI', Roboto, sans-serif;
+    display: flex;
+    align-items: center;
+    gap: 20px;
+    font-size: 0.88em;
+">
+    <div style="display: flex; align-items: center; gap: 8px;">
+        <span style="height: 10px; width: 10px; background-color: #34A853; border-radius: 50%; display: inline-block; box-shadow: 0 0 8px #34A853;"></span>
+        <span id="active-station" style="font-weight: bold; color: #34A853;">SELECT A LOCATION</span>
+    </div>
+    
+    <div style="border-left: 1px solid #333; height: 28px;"></div>
+    
+    <div>
+        <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">TEMP</div>
+        <div id="indicator-temp" style="font-weight: bold; color: #FBBC05;">--°F</div>
+    </div>
+    
+    <div style="border-left: 1px solid #333; height: 28px;"></div>
+    
+    <div>
+        <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">CONDITIONS</div>
+        <div id="indicator-cond" style="font-weight: bold; color: #00e5ff;">SEARCH ANYWHERE</div>
+    </div>
+    
+    <div style="border-left: 1px solid #333; height: 28px;"></div>
+    
+    <div>
+        <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">WIND SPEED</div>
+        <div id="indicator-wind" style="font-weight: bold; color: #fff;">-- mph</div>
+    </div>
+    
+    <div style="border-left: 1px solid #333; height: 28px;"></div>
+    
+    <div>
+        <div style="font-size: 0.7em; color: #888; text-transform: uppercase;">RADAR UTC</div>
+        <div id="utc-clock" style="font-weight: bold; color: #4285F4;">--:--:-- Z</div>
+    </div>
+    
+    <button onclick="location.reload()" style="
+        background: #00e5ff;
+        color: #000;
+        border: none;
+        padding: 8px 14px;
+        border-radius: 6px;
+        font-family: inherit;
+        font-weight: bold;
+        cursor: pointer;
+        margin-left: 10px;
+    ">⚡ REFRESH</button>
+</div>
+
+<script>
+    // 1. UTC Clock
+    function updateUTC() {
+        const now = new Date();
+        document.getElementById('utc-clock').innerText = now.toISOString().substr(11, 8) + ' Z';
+    }
+    setInterval(updateUTC, 1000);
+    updateUTC();
+
+    let activeLat = 39.8283;
+    let activeLon = -82.5795;
+
+    function getLeafletMap() {
+        for (let key in window) {
+            if (key.startsWith('map_') && window[key] instanceof L.Map) {
+                return window[key];
+            }
+        }
+        return null;
+    }
+
+    function flyTo(lat, lon, label, zoomLevel = 9) {
+        const map = getLeafletMap();
+        if (map) {
+            map.flyTo([lat, lon], zoomLevel, { duration: 1.5 });
+            activeLat = lat;
+            activeLon = lon;
+            document.getElementById('active-station').innerText = label.toUpperCase();
+            document.getElementById('suggestions-box').style.display = 'none';
+            document.getElementById('us-search-input').value = label;
+            fetchNWSWeather(lat, lon);
+        }
+    }
+
+    // 2. Geolocation: Detect user's current GPS position on startup
+    function useMyLocation() {
+        if (navigator.geolocation) {
+            navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                    flyTo(pos.coords.latitude, pos.coords.longitude, 'MY CURRENT LOCATION');
+                },
+                (err) => {
+                    alert('Unable to retrieve GPS location. Use search bar.');
+                }
+            );
+        }
+    }
+
+    // Automatically try locating user on open
+    window.addEventListener('load', () => {
+        setTimeout(useMyLocation, 500);
+    });
+
+    // 3. Live Autocomplete Location Search Engine (Worldwide / US)
+    let debounceTimer;
+    function handleSearchInput() {
+        clearTimeout(debounceTimer);
+        const query = document.getElementById('us-search-input').value;
+        const box = document.getElementById('suggestions-box');
+        
+        if (query.length < 2) {
+            box.style.display = 'none';
+            return;
+        }
+        
+        debounceTimer = setTimeout(async () => {
+            try {
+                const res = await fetch(`https://nominatim.openstreetmap.org/search?format=json&limit=5&q=${encodeURIComponent(query)}`);
+                const data = await res.json();
+                box.innerHTML = '';
+                
+                if (data && data.length > 0) {
+                    data.forEach(item => {
+                        const div = document.createElement('div');
+                        div.style.padding = '8px 12px';
+                        div.style.cursor = 'pointer';
+                        div.style.borderBottom = '1px solid #1a232d';
+                        div.style.color = '#00e5ff';
+                        div.innerText = item.display_name.split(',').slice(0, 3).join(',');
+                        div.onmouseover = () => div.style.background = '#1e2936';
+                        div.onmouseout = () => div.style.background = 'transparent';
+                        div.onclick = () => flyTo(parseFloat(item.lat), parseFloat(item.lon), item.display_name.split(',')[0]);
+                        box.appendChild(div);
+                    });
+                    box.style.display = 'block';
+                } else {
+                    box.style.display = 'none';
+                }
+            } catch (e) {
+                console.error(e);
+            }
+        }, 300);
+    }
+
+    // 4. Fetch Weather Data for Selected Coordinates
+    async function fetchNWSWeather(lat, lon) {
+        try {
+            const pointsRes = await fetch(`https://api.weather.gov/points/${lat.toFixed(4)},${lon.toFixed(4)}`);
+            const pointsData = await pointsRes.json();
+            
+            const observationRes = await fetch(pointsData.properties.forecastHourly);
+            const observationData = await observationRes.json();
+            
+            const currentPeriod = observationData.properties.periods[0];
+            
+            document.getElementById('indicator-cond').innerText = currentPeriod.shortForecast.toUpperCase();
+            document.getElementById('indicator-temp').innerText = currentPeriod.temperature + '°' + currentPeriod.temperatureUnit;
+            document.getElementById('indicator-wind').innerText = currentPeriod.windSpeed + ' ' + currentPeriod.windDirection;
+        } catch (err) {
+            document.getElementById('indicator-cond').innerText = 'RADAR ACTIVE';
+        }
+    }
+</script>
+"""
+
+radar_map.get_root().html.add_child(folium.Element(hud_html))
+
+# 7. Save map and launch in Chrome
+file_path = os.path.abspath("universal_radar_workstation.html")
+radar_map.save(file_path)
+
+webbrowser.open(f"file://{file_path}")
+print("Universal Radar Workstation launched in Google Chrome!")
